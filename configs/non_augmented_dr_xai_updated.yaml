@@ -1,0 +1,27 @@
+# Non-augmented APTOS + AutoMorph profile.
+# Use this when raw images, X1, X2, X3, and X4 must all point to the same original dataset.
+labels_csv: /home/i1n23/datasets/APTOS2019/train.csv
+image_dir: /home/i1n23/datasets/APTOS2019/train_images
+automorph_results_dir: /home/i1n23/AutoMorph/Results
+# Canonical X4 source: old full AutoMorph Macular_Features.csv profile.
+macular_features_csv: /home/i1n23/AutoMorph/Results/M3/Macular_Features.csv
+# Leave augmented MICE manifest unused in this profile.
+mice_biomarker_manifest: ""
+output_dir: /home/i1n23/retina_graph_dr/github_ready_xai_graph_dr/outputs_non_augmented_dr_xai_updated
+id_col: id_code
+label_col: diagnosis
+group_col: id_code
+image_size: 224
+x12_embedding_dim: 128
+x3_embedding_dim: 128
+x4_reduced_dim: 32
+graph_k: 8
+random_state: 42
+batch_size: 192
+hidden_dim: 192
+lesion_classes:
+  - microaneurysm
+  - hemorrhage
+  - hard_exudate
+  - cotton_wool_spot
+  - neovascularization
