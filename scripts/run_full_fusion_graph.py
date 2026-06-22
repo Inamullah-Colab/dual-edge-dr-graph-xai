@@ -52,6 +52,25 @@ def select_x4_columns(cols: list[str], scope: str) -> list[str]:
         ]
     raise ValueError(f"Unknown x4 scope: {scope}")
 
+
+def select_x3_columns(cols: list[str]) -> list[str]:
+    """Return the canonical 128-D X3 image/lesion embedding columns.
+
+    X3 must be the image/lesion embedding used by the X34 Jacobian branch.
+    The canonical release schema is x3_image_embed_000 ... x3_image_embed_127.
+    Other x3_/embed_ columns are rejected to avoid accidentally feeding X2 map
+    descriptors or unrelated features into the Jacobian branch.
+    """
+    canonical = [f"x3_image_embed_{i:03d}" for i in range(128)]
+    if all(c in cols for c in canonical):
+        return canonical
+    raise ValueError(
+        "X3 CSV must contain exactly the canonical 128-D columns "
+        "x3_image_embed_000 ... x3_image_embed_127. "
+        "If using Huang et al. lesion-based contrastive learning, export its 128-D "
+        "features into this schema before running the graph builder."
+    )
+
 def numeric_matrix(df: pd.DataFrame, cols: list[str]) -> np.ndarray:
     return (
         df[cols]
@@ -171,7 +190,8 @@ def main() -> None:
     if base["id_code"].duplicated().any():
         raise ValueError("base X1/X4 table has duplicate id_code values")
     df, x2_cols_all = merge_required(base, args.x2_csv, ("x2_",), "X2")
-    df, x3_cols = merge_required(df, args.x3_csv, ("x3_", "embed_"), "X3")
+    df, x3_cols_all = merge_required(df, args.x3_csv, ("x3_", "embed_"), "X3")
+    x3_cols = select_x3_columns(x3_cols_all)
     x1_cols = prefixed_columns(df, ("x1_",))
     x2_cols = select_x2_map_columns(x2_cols_all)
     x4_cols_all = prefixed_columns(df, ("x4_macula__", "x4_"))
@@ -217,6 +237,7 @@ def main() -> None:
         "x2_features_used_for_x12": len(x2_cols),
         "x2_features_total": len(x2_cols_all),
         "x3_features": len(x3_cols),
+        "x3_schema": "x3_image_embed_000..x3_image_embed_127",
         "x4_features_used_for_x34": len(x4_cols),
         "x4_features_total": len(x4_cols_all),
         "x4_scope": args.x4_scope,

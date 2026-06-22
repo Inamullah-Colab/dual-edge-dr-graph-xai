@@ -27,7 +27,7 @@ In results terms, the figure supports the interpretation that the model is not o
 ```text
 configs/        YAML configs for the current matched APTOS DR-XAI graph run
 docs/           README figure only
-scripts/        core runnable pipeline stages
+scripts/        core runnable pipeline stages, with X2 and X3 separated explicitly
 src/rxg/        minimal reusable package code
 tests/          smoke tests and DR-XAI evidence tests
 ```
@@ -80,7 +80,27 @@ PYTHONPATH=src python scripts/build_non_augmented_intersection.py \
 
 ### 2. Generate X2 lesion evidence and X3 embeddings
 
-The combined builder writes both outputs in one pass:
+Preferred clear sequence: build X2 and X3 separately so the streams cannot be confused.
+
+Build X2 lesion evidence for the X12 spatial branch:
+
+```bash
+PYTHONPATH=src python scripts/build_x2_lesion_evidence.py \
+  --manifest outputs_non_augmented/non_augmented_strict_intersection_manifest.csv \
+  --output outputs_non_augmented_dr_xai_updated/non_augmented_dr_xai_x2_lesion_evidence.csv \
+  --image-size 224
+```
+
+Build X3 128-D image/lesion embeddings for the X34 Jacobian branch:
+
+```bash
+PYTHONPATH=src python scripts/build_x3_image_embeddings.py \
+  --manifest outputs_non_augmented/non_augmented_strict_intersection_manifest.csv \
+  --output outputs_non_augmented_dr_xai_updated/non_augmented_dr_xai_x3_image_embeddings.csv \
+  --image-size 224
+```
+
+The older combined builder can still write both outputs in one pass:
 
 ```bash
 PYTHONPATH=src python scripts/build_non_augmented_image_evidence.py \
@@ -96,14 +116,7 @@ Important definition: `X2` is lesion evidence maps/statistics. The 128-D vector 
 x3_image_embed_000 ... x3_image_embed_127
 ```
 
-If you want to generate only X3, use the dedicated script:
-
-```bash
-PYTHONPATH=src python scripts/build_x3_image_embeddings.py \
-  --manifest outputs_non_augmented/non_augmented_strict_intersection_manifest.csv \
-  --output outputs_non_augmented_dr_xai_updated/non_augmented_dr_xai_x3_image_embeddings.csv \
-  --image-size 224
-```
+Current X3 implementation note: the released code uses a deterministic self-contained 128-D proxy embedding so the graph can run without external checkpoints. If using the exact Huang et al. lesion-based contrastive learning model, first export its 128-D image features into the same column schema (`x3_image_embed_000 ... x3_image_embed_127`) and pass that CSV to `run_full_fusion_graph.py` as `--x3-csv`.
 
 ### 3. Build X12, X34, graph edges, attention features, and statistics
 

@@ -18,6 +18,12 @@ def main() -> None:
     parser.add_argument("--no-mask", action="store_true")
     parser.add_argument("--no-clahe", action="store_true")
     parser.add_argument("--no-green", action="store_true")
+    parser.add_argument(
+        "--embedding-source",
+        default="self_contained_proxy",
+        choices=["self_contained_proxy"],
+        help="Current release mode. For exact Huang et al. lesion-based contrastive embeddings, export a 128-D CSV from that model and pass it to run_full_fusion_graph.py as --x3-csv.",
+    )
     args = parser.parse_args()
 
     manifest = pd.read_csv(args.manifest)
@@ -38,6 +44,12 @@ def main() -> None:
     for i, row in enumerate(manifest.itertuples(index=False), start=1):
         try:
             rgb = preprocess(row.image_path)
+            # X3 is the 128-D image/lesion embedding consumed by the X34 Jacobian branch.
+            # This release builds a deterministic self-contained proxy embedding so the
+            # graph pipeline runs without external checkpoints. It is NOT the exact
+            # Huang et al. lesion-based contrastive ResNet50 checkpoint embedding.
+            # To use the exact LCL model, export its 128-D features to a CSV with
+            # x3_image_embed_000..127 and pass that CSV as --x3-csv.
             emb = image_embedding(rgb, dim=128)
             if emb.shape != (128,):
                 raise ValueError(f"Expected 128-D X3 embedding, got shape {emb.shape}")
@@ -68,6 +80,9 @@ def main() -> None:
         "x3_embedding_dim": int(len(x3_cols)),
         "x3_column_prefix": "x3_image_embed_",
         "x3_definition": "128-D image/lesion embedding used by the X34 Jacobian branch",
+        "embedding_source": args.embedding_source,
+        "exact_lcl_model": False,
+        "note": "This release uses a deterministic self-contained proxy. For Huang et al. LCL, export the pretrained model features into the same x3_image_embed_000..127 schema.",
         "failed_rows": int(len(failed)),
         "output_csv": str(output),
         "failed_examples": failed[:10],
