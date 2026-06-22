@@ -2,6 +2,8 @@
 
 Research code for an interpretable diabetic retinopathy grading framework that combines lesion evidence, retinal vessel information, AutoMorph biomarkers, and image-level graph structure.
 
+> **Warning:** This code is for research and educational purposes only. Any clinical deployment requires IRB approval and prospective field validation.
+
 The core method is a **dual-edge spatial-Jacobian image graph**:
 
 - `X1`: AutoMorph vessel information from artery, vein, vessel, and zone maps.
@@ -15,6 +17,21 @@ The core method is a **dual-edge spatial-Jacobian image graph**:
 ![Representative DR lesion/XAI and biomarker association figure](docs/figures/main_interpretation_figure.jpg)
 
 This repository is organized as a clean implementation of our current methodology. It is not a copy of DR-XAI or AutoMorph. DR-XAI-style preprocessing is used to construct lesion-aware evidence, and AutoMorph outputs are used as vascular/morphometric biomarkers, but the X1-X4/X12-X34 graph construction, fusion, evaluation, and statistical interpretation pipeline are implemented here for this study.
+
+
+## Method Flow
+
+The intended sequence is deliberately strict so the evidence streams are not mixed:
+
+1. **Match the cohort**: build a strict manifest of images with aligned labels, raw fundus files, AutoMorph vessel maps, and AutoMorph macular biomarkers.
+2. **Build X1 and X4**: use AutoMorph outputs for vessel evidence (`X1`) and morphometric biomarkers (`X4`).
+3. **Build X2**: generate lesion evidence maps/statistics only. X2 feeds the spatial vessel-lesion branch and is not the embedding.
+4. **Build X3**: extract the 128-D image/lesion embedding. The preferred final path uses Huang et al. lesion-based contrastive ResNet50 checkpoint features; the proxy script is fallback only.
+5. **Build X12**: fuse X1 and X2 into spatial vessel-lesion evidence.
+6. **Build X34**: map X3 to X4 and summarize the Jacobian embedding-biomarker sensitivity.
+7. **Build the image graph**: fundus images are nodes; E12 and E34 define complementary image-image edges.
+8. **Fuse and evaluate**: lightweight two-token attention combines X12 and X34, followed by five-class and binary referable DR evaluation.
+9. **Interpret statistically**: run grade-wise tests, Spearman lesion-biomarker associations, and FDR correction.
 
 ## What the Main Figure Shows
 
@@ -68,7 +85,7 @@ Raw clinical images and third-party dataset files are not included in this repos
 The current clean branch uses:
 
 ```text
-configs/non_augmented_dr_xai_updated.yaml
+configs/non_augmented_huang_lcl.yaml
 ```
 
 ### 1. Build the strict matched APTOS manifest
@@ -87,16 +104,29 @@ Build X2 lesion evidence for the X12 spatial branch:
 ```bash
 PYTHONPATH=src python scripts/build_x2_lesion_evidence.py \
   --manifest outputs_non_augmented/non_augmented_strict_intersection_manifest.csv \
-  --output outputs_non_augmented_dr_xai_updated/non_augmented_dr_xai_x2_lesion_evidence.csv \
+  --output outputs_non_augmented_dr_xai_huang_lcl/non_augmented_dr_xai_x2_lesion_evidence.csv \
   --image-size 224
 ```
 
-Build X3 128-D image/lesion embeddings for the X34 Jacobian branch:
+Build X3 128-D image/lesion embeddings for the X34 Jacobian branch. For the final Huang-style run, use the real Lesion-based Contrastive Learning checkpoint:
+
+```bash
+PYTHONPATH=src python scripts/build_x3_huang_lcl_embeddings.py \
+  --manifest outputs_non_augmented/non_augmented_strict_intersection_manifest.csv \
+  --output outputs_non_augmented_dr_xai_huang_lcl/non_augmented_dr_xai_x3_image_embeddings.csv \
+  --lcl-repo /path/to/Lesion-based-Contrastive-Learning \
+  --checkpoint /path/to/resnet50_128_08.pt \
+  --image-size 128
+```
+
+The Huang checkpoint is not committed to this repository. Download `lesion_based_CL_trained_weights.zip` from the Huang et al. GitHub release and extract a model such as `resnet50_128_08.pt`.
+
+Fallback only: if the Huang checkpoint is unavailable, the repository also provides a deterministic self-contained proxy X3 builder:
 
 ```bash
 PYTHONPATH=src python scripts/build_x3_image_embeddings.py \
   --manifest outputs_non_augmented/non_augmented_strict_intersection_manifest.csv \
-  --output outputs_non_augmented_dr_xai_updated/non_augmented_dr_xai_x3_image_embeddings.csv \
+  --output outputs_non_augmented_dr_xai_huang_lcl/non_augmented_dr_xai_x3_image_embeddings.csv \
   --image-size 224
 ```
 
@@ -105,8 +135,8 @@ The older combined builder can still write both outputs in one pass:
 ```bash
 PYTHONPATH=src python scripts/build_non_augmented_image_evidence.py \
   --manifest outputs_non_augmented/non_augmented_strict_intersection_manifest.csv \
-  --x2-output outputs_non_augmented_dr_xai_updated/non_augmented_dr_xai_x2_lesion_evidence.csv \
-  --x3-output outputs_non_augmented_dr_xai_updated/non_augmented_dr_xai_x3_image_embeddings.csv \
+  --x2-output outputs_non_augmented_dr_xai_huang_lcl/non_augmented_dr_xai_x2_lesion_evidence.csv \
+  --x3-output outputs_non_augmented_dr_xai_huang_lcl/non_augmented_dr_xai_x3_image_embeddings.csv \
   --image-size 224
 ```
 
@@ -116,17 +146,17 @@ Important definition: `X2` is lesion evidence maps/statistics. The 128-D vector 
 x3_image_embed_000 ... x3_image_embed_127
 ```
 
-Current X3 implementation note: the released code uses a deterministic self-contained 128-D proxy embedding so the graph can run without external checkpoints. If using the exact Huang et al. lesion-based contrastive learning model, first export its 128-D image features into the same column schema (`x3_image_embed_000 ... x3_image_embed_127`) and pass that CSV to `run_full_fusion_graph.py` as `--x3-csv`.
+X3 implementation note: `build_x3_huang_lcl_embeddings.py` is the real Huang-style checkpoint path. `build_x3_image_embeddings.py` is only a fallback proxy for environments where the Huang checkpoint is not available. Both write the required schema (`x3_image_embed_000 ... x3_image_embed_127`) so `run_full_fusion_graph.py` can consume the same X3 interface.
 
 ### 3. Build X12, X34, graph edges, attention features, and statistics
 
 ```bash
 PYTHONPATH=src python scripts/run_full_fusion_graph.py \
-  --config configs/non_augmented_dr_xai_updated.yaml \
+  --config configs/non_augmented_huang_lcl.yaml \
   --base-x1-x4 outputs_non_augmented/non_augmented_x1_x4_features_mice.csv \
-  --x2-csv outputs_non_augmented_dr_xai_updated/non_augmented_dr_xai_x2_lesion_evidence.csv \
-  --x3-csv outputs_non_augmented_dr_xai_updated/non_augmented_dr_xai_x3_image_embeddings.csv \
-  --output outputs_non_augmented_dr_xai_updated/full_fusion_graph/non_augmented_dr_xai_spatial_jacobian_attention_graph_features.csv \
+  --x2-csv outputs_non_augmented_dr_xai_huang_lcl/non_augmented_dr_xai_x2_lesion_evidence.csv \
+  --x3-csv outputs_non_augmented_dr_xai_huang_lcl/non_augmented_dr_xai_x3_image_embeddings.csv \
+  --output outputs_non_augmented_dr_xai_huang_lcl/full_fusion_graph/non_augmented_huang_lcl_spatial_jacobian_attention_graph_features.csv \
   --x4-scope zone_b_c_no_knudtson
 ```
 
@@ -136,8 +166,8 @@ This stage creates the image graph where nodes are fundus images and edges are b
 
 ```bash
 PYTHONPATH=src python scripts/evaluate_train_val_test.py \
-  --feature-csv outputs_non_augmented_dr_xai_updated/full_fusion_graph/non_augmented_dr_xai_spatial_jacobian_attention_graph_features.csv \
-  --output-dir outputs_non_augmented_dr_xai_updated/full_fusion_graph/train_val_test_eval \
+  --feature-csv outputs_non_augmented_dr_xai_huang_lcl/full_fusion_graph/non_augmented_huang_lcl_spatial_jacobian_attention_graph_features.csv \
+  --output-dir outputs_non_augmented_dr_xai_huang_lcl/full_fusion_graph/train_val_test_eval \
   --seed 42
 ```
 
@@ -147,10 +177,10 @@ The evaluation reports both five-class DR grading and binary referable DR metric
 
 ```bash
 PYTHONPATH=src python scripts/plot_interpretation_statistics.py \
-  --features outputs_non_augmented_dr_xai_updated/full_fusion_graph/non_augmented_dr_xai_spatial_jacobian_attention_graph_features.csv \
-  --hypothesis-tests outputs_non_augmented_dr_xai_updated/full_fusion_graph/hypothesis_tests_all_features.csv \
-  --linkage outputs_non_augmented_dr_xai_updated/full_fusion_graph/lesion_biomarker_linkage.csv \
-  --out-dir outputs_non_augmented_dr_xai_updated/full_fusion_graph/figures/interpretation_statistics
+  --features outputs_non_augmented_dr_xai_huang_lcl/full_fusion_graph/non_augmented_huang_lcl_spatial_jacobian_attention_graph_features.csv \
+  --hypothesis-tests outputs_non_augmented_dr_xai_huang_lcl/full_fusion_graph/hypothesis_tests_all_features.csv \
+  --linkage outputs_non_augmented_dr_xai_huang_lcl/full_fusion_graph/lesion_biomarker_linkage.csv \
+  --out-dir outputs_non_augmented_dr_xai_huang_lcl/full_fusion_graph/figures/interpretation_statistics
 ```
 
 The statistical analysis includes grade-wise trend testing, Spearman association, and FDR correction.
@@ -159,28 +189,28 @@ The statistical analysis includes grade-wise trend testing, Spearman association
 
 ```bash
 PYTHONPATH=src python scripts/plot_dr_class_lesion_xai_summary_clean.py \
-  --examples outputs_non_augmented_dr_xai_updated/full_fusion_graph/figures/dr_class_lesion_xai_summary/dr_all_classes_lesion_xai_association_examples.csv \
-  --features outputs_non_augmented_dr_xai_updated/full_fusion_graph/non_augmented_dr_xai_spatial_jacobian_attention_graph_features.csv \
-  --linkage outputs_non_augmented_dr_xai_updated/full_fusion_graph/lesion_biomarker_linkage.csv \
-  --out-dir outputs_non_augmented_dr_xai_updated/full_fusion_graph/figures/dr_class_lesion_xai_summary \
+  --examples outputs_non_augmented_dr_xai_huang_lcl/full_fusion_graph/figures/dr_class_lesion_xai_summary/dr_all_classes_lesion_xai_association_examples.csv \
+  --features outputs_non_augmented_dr_xai_huang_lcl/full_fusion_graph/non_augmented_huang_lcl_spatial_jacobian_attention_graph_features.csv \
+  --linkage outputs_non_augmented_dr_xai_huang_lcl/full_fusion_graph/lesion_biomarker_linkage.csv \
+  --out-dir outputs_non_augmented_dr_xai_huang_lcl/full_fusion_graph/figures/dr_class_lesion_xai_summary \
   --image-size 224
 ```
 
 ## Current Internal APTOS Results
 
-Updated DR-XAI-style pipeline, strict matched APTOS cohort, non-augmented images:
+Updated DR-XAI-style pipeline with real Huang LCL X3 embeddings, strict matched APTOS cohort, non-augmented images:
 
 | Stream | Five-class Acc | Five-class QWK | Macro F1 | MAE | Adjacent Acc |
 |---|---:|---:|---:|---:|---:|
 | X1 vessel | 0.6409 | 0.5038 | 0.2832 | 0.6186 | 0.7887 |
 | X2 lesion evidence | 0.7388 | 0.6720 | 0.4256 | 0.4244 | 0.8729 |
-| X3 embedding | 0.7371 | 0.6325 | 0.4297 | 0.4433 | 0.8694 |
+| X3 Huang LCL embedding | 0.8110 | 0.8265 | 0.5934 | 0.2749 | 0.9278 |
 | X4 biomarkers | 0.6770 | 0.5809 | 0.3553 | 0.5498 | 0.8076 |
 | X12 spatial | 0.7354 | 0.6890 | 0.4258 | 0.4124 | 0.8832 |
-| X34 Jacobian | 0.7371 | 0.6782 | 0.4890 | 0.4467 | 0.8488 |
-| Final full graph | 0.7680 | 0.7313 | 0.5140 | 0.3729 | 0.8900 |
+| X34 Jacobian | 0.8007 | 0.8280 | 0.5826 | 0.2835 | 0.9296 |
+| Final full graph | 0.8076 | 0.8312 | 0.5915 | 0.2749 | 0.9330 |
 
-Binary referable DR for the final full graph: accuracy `0.8694`, AUROC `0.9455`, sensitivity `0.8739`, specificity `0.8667`, F1 `0.8362`, AUPRC `0.9142`.
+Binary referable DR for the final full graph: accuracy `0.9055`, AUROC `0.9711`, sensitivity `0.8964`, specificity `0.9111`, F1 `0.8786`, AUPRC `0.9423`.
 
 ## Notes on Neovascularization
 

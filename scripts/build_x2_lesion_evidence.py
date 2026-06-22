@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Warning: This code is for research and educational purposes only. Any clinical deployment requires IRB approval and prospective field validation.
+
 import argparse
 import json
 from pathlib import Path
