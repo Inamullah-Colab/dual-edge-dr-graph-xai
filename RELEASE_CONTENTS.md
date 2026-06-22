@@ -6,7 +6,7 @@ Included:
 - README with the main interpretation figure
 - core package code in `src/rxg/`
 - current APTOS/non-augmented DR-XAI configs
-- only the scripts required for the current X1-X4 / X12-X34 / graph workflow
+- only the scripts required for the current X1-X4 / X12-X34 / graph workflow, including a dedicated X3 128-D embedding builder
 - tests and minimal dependency files
 
 Excluded:

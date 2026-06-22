@@ -80,6 +80,8 @@ PYTHONPATH=src python scripts/build_non_augmented_intersection.py \
 
 ### 2. Generate X2 lesion evidence and X3 embeddings
 
+The combined builder writes both outputs in one pass:
+
 ```bash
 PYTHONPATH=src python scripts/build_non_augmented_image_evidence.py \
   --manifest outputs_non_augmented/non_augmented_strict_intersection_manifest.csv \
@@ -88,7 +90,20 @@ PYTHONPATH=src python scripts/build_non_augmented_image_evidence.py \
   --image-size 224
 ```
 
-Important definition: `X2` is lesion evidence maps/statistics. The 128-D vector representation belongs to `X3`.
+Important definition: `X2` is lesion evidence maps/statistics. The 128-D vector representation belongs to `X3`. In the output CSV, X3 columns are explicitly named:
+
+```text
+x3_image_embed_000 ... x3_image_embed_127
+```
+
+If you want to generate only X3, use the dedicated script:
+
+```bash
+PYTHONPATH=src python scripts/build_x3_image_embeddings.py \
+  --manifest outputs_non_augmented/non_augmented_strict_intersection_manifest.csv \
+  --output outputs_non_augmented_dr_xai_updated/non_augmented_dr_xai_x3_image_embeddings.csv \
+  --image-size 224
+```
 
 ### 3. Build X12, X34, graph edges, attention features, and statistics
 
