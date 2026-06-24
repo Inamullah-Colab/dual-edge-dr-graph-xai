@@ -230,4 +230,4 @@ PYTHONPATH=src /path/to/automorph/env/bin/python -m pytest
 
 ## Citation
 
-Citation information will be added after manuscript submission.
+https://doi.org/10.48550/arXiv.2606.24168
